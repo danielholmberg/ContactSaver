@@ -1,5 +1,6 @@
 import React,{Component} from 'react';
 import {SortableContainer, SortableElement, arrayMove} from 'react-sortable-hoc';
+import firebase from './../../firebase.js';  // Firebase
 
 import Avatar from 'material-ui/Avatar';
 import SocialPerson from 'material-ui/svg-icons/social/person';
@@ -8,6 +9,24 @@ import {List, ListItem} from 'material-ui/List';
 import Chip from 'material-ui/Chip';
 
 //import Contact from './../Contact/Contact';
+
+// FIRESTORE
+firebase.firestore().enablePersistence()
+  .then(function() {
+      // Initialize Cloud Firestore through firebase
+      var db = firebase.firestore();
+  })
+  .catch(function(err) {
+      if (err.code == 'failed-precondition') {
+          // Multiple tabs open, persistence can only be enabled
+          // in one tab at a a time.
+          // ...
+      } else if (err.code == 'unimplemented') {
+          // The current browser does not support all of the
+          // features required to enable persistence
+          // ...
+      }
+  });
 
 // STYLES
 const styles = {
@@ -22,15 +41,6 @@ const styles = {
     fontWeight: 'bold',
     fontSize: 12,
   },
-  dateChip: {
-    margin: 4,
-    backgroundColor: '#FFFFFF00', // 100% Transparency
-  },
-  dateChipLabel: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  dateChipLabelColor: '#00000080',  // 50% Transparency
   chipWrapper: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -44,9 +54,8 @@ function onContextClick({context}) {
   alert('You clicked on context: ' + context);
 };
 
-// LIST ITEM
-const SortableItem = SortableElement(({collection, contact}) => {
-  //const company = contact.company;
+// CONTACT LIST ITEM
+const SortableItem = SortableElement(({company, contact}) => {
   const context = contact.context;
   const latest_dialogue = contact.latest_dialogue;
   return (
@@ -55,11 +64,10 @@ const SortableItem = SortableElement(({collection, contact}) => {
       style={styles.listItem}
       leftAvatar={<Avatar icon={<SocialPerson />}/>}
       primaryText={contact.name}
-      secondaryText={contact.id}
+      secondaryText={contact.id + ' | ' + contact.latest_dialogue}
       rightAvatar={
         <div style={styles.chipWrapper}>
           <Chip style={styles.chip} labelStyle={styles.chipLabel} onClick={() => onContextClick({context})}>{context}</Chip>
-          <Chip style={styles.dateChip} labelStyle={styles.dateChipLabel} labelColor={styles.dateChipLabelColor}>{latest_dialogue}</Chip>
         </div>}
     />
   );
@@ -81,44 +89,30 @@ const SortableList = SortableContainer(({contacts}) => {
 // COMPONENT
 export default class ContactList extends Component {
   state = {
-    contacts: [
-      {
-        'id':'123@gmail.com',
-        'name':'Daniel Holmberg',
-        'company':'Sectra AB',
-        'context':'STABEN Spons',
-        'latest_dialogue':'2017-12-09',
-        'info':'Blablabla blabla blablabla.',
-      },
-      {
-        'id':'234@gmail.com',
-        'name':'Albin Andersson',
-        'company':'Sectra AB',
-        'context':'STABEN Spons',
-        'latest_dialogue':'2017-12-08',
-        'info':'Blablabla blabla blablabla.',
-      },
-      {
-        'id':'345@gmail.com',
-        'name':'Christian Holmberg',
-        'company':'Accenture',
-        'context':'NärU',
-        'latest_dialogue':'2017-12-02',
-        'info':'Blablabla blabla blablabla.',
-      },
-      {
-        'id':'456@gmail.com',
-        'name':'Johanna Assarsson',
-        'company':'Spotify',
-        'context':'D-LAN Spons',
-        'latest_dialogue':'2017-11-10',
-        'info':'Blablabla blabla blablabla.',
-      },
-    ],
+    contacts: [],
   };
 
-  onSortStart = ({oldIndex, newIndex}) => {
-
+  componentDidMount() {
+    var db = firebase.firestore();
+    var contacts = [];
+    db.collection('companies').get().then(function(companies) {
+      companies.forEach(function(company) {
+        db.collection('companies').get({company}).collection('contacts').get().then(function(db_contacts) {
+          db_contacts.forEach(function(contact, id){
+            contacts.push([
+              id,
+              contact.data().name,
+              contact.data().context,
+              contact.data().latest_dialogue,
+              contact.data().info
+            ]);
+          });
+        });
+      });
+    });
+    this.setState({
+      contacts: contacts
+    });
   };
 
   onSortEnd = ({oldIndex, newIndex}) => {
@@ -134,7 +128,6 @@ export default class ContactList extends Component {
         contacts={this.state.contacts}
         pressDelay={200}
         transitionDuration={400}
-        onSortStart={this.onSortStart}
         onSortEnd={this.onSortEnd}
         useWindowAsScrollContainer={true}
         lockAxis='y'
